@@ -1,7 +1,7 @@
-/*!
+/*
  * Lazy Load - jQuery plugin for lazy loading images
  *
- * Copyright (c) 2007-2017 Mika Tuupola
+ * Copyright (c) 2007-2013 Mika Tuupola
  *
  * Licensed under the MIT license:
  *   http://www.opensource.org/licenses/mit-license.php
@@ -9,9 +9,14 @@
  * Project home:
  *   http://www.appelsiini.net/projects/lazyload
  *
- * Version:  1.10.0-dev
+ * Version:  1.9.3
  *
  */
+
+// README
+// This file has been modified from original
+// Debounce function was added for scroll event
+// and unbind the event once loaded
 
 (function($, window, document, undefined) {
     var $window = $(window);
@@ -22,15 +27,15 @@
         var settings = {
             threshold       : 0,
             failure_limit   : 0,
-            event           : "scroll.lazyload",
+            event           : "scroll",
             effect          : "show",
             container       : window,
             data_attribute  : "original",
-            data_srcset     : "srcset",
-            skip_invisible  : false,
+            skip_invisible  : true,
             appear          : null,
             load            : null,
-            placeholder     : "data:image/gif;base64,R0lGODdhAQABAPAAAMPDwwAAACwAAAAAAQABAAACAkQBADs="
+            placeholder     : "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsQAAA7EAZUrDhsAAAANSURBVBhXYzh8+PB/AAffA0nNPuCLAAAAAElFTkSuQmCC",
+            debounce_time   : 100
         };
 
         function update() {
@@ -55,7 +60,21 @@
                     }
                 }
             });
+        }
 
+        function debounce(func, wait, immediate) {
+            var timeout;
+            return function () {
+                var context = this, args = arguments;
+                var later = function () {
+                    timeout = null;
+                    if (!immediate) func.apply(context, args);
+                };
+                var callNow = immediate && !timeout;
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+                if (callNow) func.apply(context, args);
+            };
         }
 
         if(options) {
@@ -78,9 +97,12 @@
 
         /* Fire one scroll event per scroll. Not one scroll event per image. */
         if (0 === settings.event.indexOf("scroll")) {
-            $container.off(settings.event).on(settings.event, function() {
+            function doUpdate() {
                 return update();
-            });
+            };
+
+            var debouncedUpdate = debounce(doUpdate, settings.debounce_time);
+            $container.bind(settings.event, debouncedUpdate);
         }
 
         this.each(function() {
@@ -103,53 +125,16 @@
                         var elements_left = elements.length;
                         settings.appear.call(self, elements_left, settings);
                     }
-                    $("<img />")
-                        .one("load", function() {
-                            var original = $self.attr("data-" + settings.data_attribute);
-                            var srcset = $self.attr("data-" + settings.data_srcset);
 
-                            if (original !== $self.attr("src")) {
-                                $self.hide();
-                                if ($self.is("img")) {
-                                    $self.attr("src", original);
-                                    if (srcset !== null) {
-                                        $self.attr("srcset", srcset);
-                                    }
-                                } if ($self.is("video")) {
-                                    $self.attr("poster", original);
-                                } else {
-                                    $self.css("background-image", "url('" + original + "')");
-                                }
-                                $self[settings.effect](settings.effect_speed);
-                            }
-
-                            self.loaded = true;
-
-                            /* Remove image from array so it is not looped next time. */
-                            var temp = $.grep(elements, function(element) {
-                                return !element.loaded;
-                            });
-                            elements = $(temp);
-
-                            if (settings.load) {
-                                var elements_left = elements.length;
-                                settings.load.call(self, elements_left, settings);
-                            }
-                        })
-                        .bind("error", function(){
-                            $(self).trigger("error");
-                        })
-                        .attr({
-                            "src": $self.attr("data-" + settings.data_attribute),
-                            "srcset": $self.attr("data-" + settings.data_srcset) || ""
-                        });
+                    $(this).trigger('uiLazyLoaded');
+                    $(settings.container).unbind(settings.event);
                 }
             });
 
             /* When wanted event is triggered load original image */
             /* by triggering appear.                              */
             if (0 !== settings.event.indexOf("scroll")) {
-                $self.off(settings.event).on(settings.event, function() {
+                $self.bind(settings.event, function() {
                     if (!self.loaded) {
                         $self.trigger("appear");
                     }
@@ -158,14 +143,14 @@
         });
 
         /* Check if something appears when window is resized. */
-        $window.off("resize.lazyload").bind("resize.lazyload", function() {
+        $window.bind("resize", function() {
             update();
         });
 
         /* With IOS5 force loading images when navigating with back button. */
         /* Non optimal workaround. */
         if ((/(?:iphone|ipod|ipad).*os 5/gi).test(navigator.appVersion)) {
-            $window.on("pageshow", function(event) {
+            $window.bind("pageshow", function(event) {
                 if (event.originalEvent && event.originalEvent.persisted) {
                     elements.each(function() {
                         $(this).trigger("appear");
@@ -175,7 +160,7 @@
         }
 
         /* Force initial check if images should appear. */
-        $(function() {
+        $(document).ready(function() {
             update();
         });
 
